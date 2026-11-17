@@ -7,6 +7,7 @@ from tkinter import scrolledtext
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from pynput import keyboard
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -80,6 +81,40 @@ entry.focus()
 
 send_button = tk.Button(bottom, text="Send", command=send)
 send_button.pack(side=tk.RIGHT, padx=(6, 0))
+
+def show_window():
+    root.deiconify()
+    root.attributes("-topmost", True)
+    root.lift()
+    root.focus_force()
+    entry.focus()
+    root.after(200, lambda: root.attributes("-topmost", False))
+
+
+def hide_window():
+    root.withdraw()
+
+
+def toggle_window():
+    if root.state() == "withdrawn":
+        show_window()
+    else:
+        hide_window()
+
+
+def quit_app():
+    hotkeys.stop()
+    root.destroy()
+
+
+hotkeys = keyboard.GlobalHotKeys({
+    "<ctrl>+<alt>+p": lambda: root.after(0, toggle_window),
+    "<ctrl>+<alt>+q": lambda: root.after(0, quit_app),
+})
+hotkeys.start()
+
+# Clicking the X hides Pixu instead of closing it
+root.protocol("WM_DELETE_WINDOW", hide_window)
 
 add_message("Pixu", "Hi, I'm Pixu. How can I help?")
 
