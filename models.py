@@ -1,9 +1,12 @@
 import os
+import re
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from openai import OpenAI
+
+from pytool import run_python
 
 load_dotenv()
 
@@ -17,7 +20,7 @@ groq_client = OpenAI(
     timeout=60,
 )
 
-# Model names change over time. If one gives a 404 error, see the tip below.
+# Model names change over time. If one gives a 404 error, update it here.
 MODELS = {
     "fast": {
         "label": "Llama 3.3 70B (Groq)",
@@ -42,20 +45,35 @@ ROUTES = {
     "reasoning": ["reasoning", "gemini", "fast"],
 }
 
-REASONING_HINTS = [
-    "calculate", "calcul", "solve", "résous", "resous", "prove", "démontre",
-    "equation", "équation", "integral", "intégrale", "derivative", "dérivée",
-    "sum of", "somme", "matrix", "matrice", "algorithm", "debug", "code",
+MATH_PATTERN = re.compile(r"\d\s*[+*/^=×÷]\s*\d|\d\s+-\s+\d")
+CALC_HINTS = [
+    "calculate", "calcul", "compute", "sum of", "somme", "product of",
+    "factorial", "prime", "average", "moyenne",
 ]
+REASONING_HINTS = [
+    "solve", "résous", "resous", "prove", "démontre", "equation", "équation",
+    "integral", "intégrale", "derivative", "dérivée", "matrix", "matrice",
+    "algorithm", "debug", "code",
+]
+
+CODE_PROMPT = (
+    "Write a short Python program that computes the answer to the question "
+    "below. Rules: print the final result with print(); use only 'import math' "
+    "and plain Python; no input(), no files, no network. Reply with ONLY the "
+    "code, no explanation.\n\nQuestion: "
+)
 
 
 def choose_route(question):
     q = question.lower()
-    has_math = any(c.isdigit() for c in q) and any(c in q for c in "+-*/^=")
-    if len(q) > 200 or has_math or any(hint in q for hint in REASONING_HINTS):
+    if MATH_PATTERN.search(q) or any(hint in q for hint in CALC_HINTS):
+        return "math"
+    if len(q) > 200 or any(hint in q for hint in REASONING_HINTS):
         return "reasoning"
     return "simple"
 
+
+# ---------- streaming (answers appear word by word) ----------
 
 def stream_groq(model_name, messages):
     stream = groq_client.chat.completions.create(
@@ -87,10 +105,79 @@ def stream_gemini(model_name, messages):
 STREAMERS = {"groq": stream_groq, "gemini": stream_gemini}
 
 
+# ---------- single answers (used to ask for Python code) ----------
+
+def once_groq(model_name, prompt):
+    response = groq_client.chat.completions.create(
+        model=model_name, messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+
+def once_gemini(model_name, prompt):
+    response = gemini_client.models.generate_content(
+        model=model_name, contents=prompt
+    )
+    return response.text
+
+
+ONCE = {"groq": once_groq, "gemini": once_gemini}
+
+
+def ask_once(order, prompt):
+    for key in order:
+        info = MODELS[key]
+        try:
+            return ONCE[info["provider"]](info["name"], prompt)
+        except Exception:
+            continue
+    return None
+
+
+def extract_code(text):
+    match = re.search(r"```(?:python)?\s*(.*?)```", text, re.DOTALL)
+    return (match.group(1) if match else text).strip()
+
+
+def try_python(question):
+    """Returns (code, output) if Python solved it, otherwise None."""
+    reply = ask_once(ROUTES["reasoning"], CODE_PROMPT + question)
+    if not reply:
+        return None
+    code = extract_code(reply)
+    try:
+        output = run_python(code)
+    except Exception:
+        return None
+    if not output:
+        return None
+    return code, output
+
+
+# ---------- main entry point used by the window ----------
+
 def stream_answer(messages, choice="auto"):
     """Yields ("model", label), ("text", chunk) or ("error", message)."""
     if choice == "auto":
-        order = ROUTES[choose_route(messages[-1]["content"])]
+        question = messages[-1]["content"]
+        route = choose_route(question)
+        if route == "math":
+            found = try_python(question)
+            if found:
+                code, output = found
+                yield ("model", "Python")
+                yield ("text", f"I ran this Python code:\n{code}\n\nResult: {output}\n\n")
+                messages = messages[:-1] + [{
+                    "role": "user",
+                    "content": (
+                        f"{question}\n\n(Python computed this exact result: "
+                        f"{output}. Give the final answer clearly and briefly, "
+                        "using this result.)"
+                    ),
+                }]
+            order = ROUTES["reasoning"]
+        else:
+            order = ROUTES[route]
     else:
         order = [choice] + [k for k in ROUTES["simple"] if k != choice]
 

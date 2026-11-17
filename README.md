@@ -25,6 +25,7 @@ Press a hotkey from anywhere, ask a question, get an answer.
 - [x] Streaming answers
 - [x] System tray icon
 - [x] Multiple models with automatic routing
+- [x] Python for calculations (filtered and sandboxed)
 - [ ] Screenshot understanding
 - [ ] Voice input
 - [ ] Packaged .exe
