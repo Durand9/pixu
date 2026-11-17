@@ -2,12 +2,14 @@ import os
 import threading
 import time
 import tkinter as tk
+import pystray
 from tkinter import scrolledtext
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pynput import keyboard
+from PIL import Image, ImageDraw
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -104,6 +106,7 @@ def toggle_window():
 
 def quit_app():
     hotkeys.stop()
+    tray_icon.stop()
     root.destroy()
 
 
@@ -112,6 +115,27 @@ hotkeys = keyboard.GlobalHotKeys({
     "<ctrl>+<alt>+q": lambda: root.after(0, quit_app),
 })
 hotkeys.start()
+
+def create_tray_image():
+    # Simple placeholder icon drawn in code (we can use a real logo later)
+    image = Image.new("RGB", (64, 64), "#4f46e5")
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((10, 10, 54, 54), fill="white")
+    draw.ellipse((22, 22, 42, 42), fill="#4f46e5")
+    return image
+
+
+tray_menu = pystray.Menu(
+    pystray.MenuItem(
+        "Show / Hide Pixu",
+        lambda icon, item: root.after(0, toggle_window),
+        default=True,  # double-click on the icon does this
+    ),
+    pystray.MenuItem("Quit", lambda icon, item: root.after(0, quit_app)),
+)
+
+tray_icon = pystray.Icon("pixu", create_tray_image(), "Pixu", tray_menu)
+tray_icon.run_detached()
 
 # Clicking the X hides Pixu instead of closing it
 root.protocol("WM_DELETE_WINDOW", hide_window)

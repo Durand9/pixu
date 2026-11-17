@@ -23,7 +23,7 @@ Press a hotkey from anywhere, ask a question, get an answer.
 - [x] Chat window
 - [x] Global hotkey
 - [ ] Streaming answers
-- [ ] System tray icon
+- [x] System tray icon
 - [ ] Screenshot understanding
 - [ ] Voice input
 - [ ] Packaged .exe

@@ -11,12 +11,14 @@ h11==0.16.0
 httpcore2==2.16.2
 httpx2==2.16.2
 idna==3.20
+pillow==13.0.0
 pyasn1==0.6.5
 pyasn1_modules==0.4.2
 pycparser==3.12
 pydantic==2.14.3
 pydantic_core==2.50.4
 pynput==1.8.2
+pystray==0.19.5
 python-dotenv==1.2.4
 requests==2.34.2
 six==1.17.0
