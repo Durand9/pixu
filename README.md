@@ -24,6 +24,7 @@ Press a hotkey from anywhere, ask a question, get an answer.
 - [x] Global hotkey
 - [x] Streaming answers
 - [x] System tray icon
+- [x] Multiple models with automatic routing
 - [ ] Screenshot understanding
 - [ ] Voice input
 - [ ] Packaged .exe

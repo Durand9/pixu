@@ -1,26 +1,18 @@
-import os
 import threading
-import time
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, ttk
 
 import pystray
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 from PIL import Image, ImageDraw
 from pynput import keyboard
 
-load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+from models import MODELS, stream_answer
 
-MODEL = "gemini-3.6-flash"  # keep the model name you already use
-chat = client.chats.create(
-    model=MODEL,
-    config=types.GenerateContentConfig(
-        thinking_config=types.ThinkingConfig(thinking_level="medium")
-    ),
-)
+messages = []  # conversation history, shared by all models
+
+CHOICES = {"Auto (Pixu decides)": "auto"}
+for key, info in MODELS.items():
+    CHOICES[info["label"]] = key
 
 
 def add_message(sender, text):
@@ -30,9 +22,9 @@ def add_message(sender, text):
     history.see(tk.END)
 
 
-def start_reply():
+def start_reply(label):
     history.config(state=tk.NORMAL)
-    history.insert(tk.END, "Pixu: ")
+    history.insert(tk.END, f"Pixu ({label}): ")
     history.config(state=tk.DISABLED)
 
 
@@ -43,35 +35,36 @@ def append_text(text):
     history.see(tk.END)
 
 
-def end_reply():
-    history.config(state=tk.NORMAL)
-    history.insert(tk.END, "\n\n")
-    history.config(state=tk.DISABLED)
-    history.see(tk.END)
+def end_reply(started):
+    if started:
+        append_text("\n\n")
     send_button.config(state=tk.NORMAL)
     entry.config(state=tk.NORMAL)
     entry.focus()
 
 
-def ask_ai(question):
+def ask_ai(choice):
     # Runs in a background thread so the window never freezes
-    root.after(0, start_reply)
-    got_text = False
-    for attempt in range(3):
-        try:
-            for chunk in chat.send_message_stream(question):
-                if chunk.text:
-                    got_text = True
-                    root.after(0, lambda t=chunk.text: append_text(t))
-            break
-        except Exception as error:
-            # Retry on overload, but only if nothing was displayed yet
-            if "503" in str(error) and not got_text and attempt < 2:
-                time.sleep(2 * (attempt + 1))  # wait 2s, then 4s, then retry
-                continue
-            root.after(0, lambda e=error: append_text(f"Error: {e}"))
-            break
-    root.after(0, end_reply)
+    started = False
+    label = ""
+    full_text = ""
+    for kind, value in stream_answer(messages, choice):
+        if kind == "model":
+            label = value
+        elif kind == "text":
+            if not started:
+                started = True
+                root.after(0, lambda l=label: start_reply(l))
+            full_text += value
+            root.after(0, lambda t=value: append_text(t))
+        elif kind == "error":
+            root.after(0, lambda m=value: add_message("Pixu", m))
+
+    if full_text:
+        messages.append({"role": "assistant", "content": full_text})
+    else:
+        messages.pop()  # remove the unanswered question from the history
+    root.after(0, lambda: end_reply(started))
 
 
 def send(event=None):
@@ -80,14 +73,23 @@ def send(event=None):
         return
     entry.delete(0, tk.END)
     add_message("You", question)
+    messages.append({"role": "user", "content": question})
     send_button.config(state=tk.DISABLED)
     entry.config(state=tk.DISABLED)
-    threading.Thread(target=ask_ai, args=(question,), daemon=True).start()
+    choice = CHOICES[selector.get()]
+    threading.Thread(target=ask_ai, args=(choice,), daemon=True).start()
 
 
 root = tk.Tk()
 root.title("Pixu")
 root.geometry("480x600")
+
+top = tk.Frame(root)
+top.pack(fill=tk.X, padx=8, pady=(8, 0))
+tk.Label(top, text="Model:").pack(side=tk.LEFT)
+selector = ttk.Combobox(top, values=list(CHOICES), state="readonly")
+selector.set("Auto (Pixu decides)")
+selector.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
 
 history = scrolledtext.ScrolledText(
     root, wrap=tk.WORD, state=tk.DISABLED, font=("Segoe UI", 11)
