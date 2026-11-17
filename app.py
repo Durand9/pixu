@@ -2,19 +2,19 @@ import os
 import threading
 import time
 import tkinter as tk
-import pystray
 from tkinter import scrolledtext
 
+import pystray
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from pynput import keyboard
 from PIL import Image, ImageDraw
+from pynput import keyboard
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-MODEL = "gemini-3.8-flash"  # keep the model name you already use
+MODEL = "gemini-3.6-flash"  # keep the model name you already use
 chat = client.chats.create(
     model=MODEL,
     config=types.GenerateContentConfig(
@@ -30,27 +30,48 @@ def add_message(sender, text):
     history.see(tk.END)
 
 
-def ask_ai(question):
-    # Runs in a background thread so the window never freezes
-    answer = None
-    for attempt in range(3):
-        try:
-            answer = chat.send_message(question).text
-            break
-        except Exception as error:
-            if "503" in str(error) and attempt < 2:
-                time.sleep(2 * (attempt + 1))  # wait 2s, then 4s then retry
-                continue
-            answer = f"Error: {error}"
-            break
-    root.after(0, lambda: show_answer(answer))
+def start_reply():
+    history.config(state=tk.NORMAL)
+    history.insert(tk.END, "Pixu: ")
+    history.config(state=tk.DISABLED)
 
 
-def show_answer(answer):
-    add_message("Pixu", answer)
+def append_text(text):
+    history.config(state=tk.NORMAL)
+    history.insert(tk.END, text)
+    history.config(state=tk.DISABLED)
+    history.see(tk.END)
+
+
+def end_reply():
+    history.config(state=tk.NORMAL)
+    history.insert(tk.END, "\n\n")
+    history.config(state=tk.DISABLED)
+    history.see(tk.END)
     send_button.config(state=tk.NORMAL)
     entry.config(state=tk.NORMAL)
     entry.focus()
+
+
+def ask_ai(question):
+    # Runs in a background thread so the window never freezes
+    root.after(0, start_reply)
+    got_text = False
+    for attempt in range(3):
+        try:
+            for chunk in chat.send_message_stream(question):
+                if chunk.text:
+                    got_text = True
+                    root.after(0, lambda t=chunk.text: append_text(t))
+            break
+        except Exception as error:
+            # Retry on overload, but only if nothing was displayed yet
+            if "503" in str(error) and not got_text and attempt < 2:
+                time.sleep(2 * (attempt + 1))  # wait 2s, then 4s, then retry
+                continue
+            root.after(0, lambda e=error: append_text(f"Error: {e}"))
+            break
+    root.after(0, end_reply)
 
 
 def send(event=None):
@@ -84,6 +105,7 @@ entry.focus()
 send_button = tk.Button(bottom, text="Send", command=send)
 send_button.pack(side=tk.RIGHT, padx=(6, 0))
 
+
 def show_window():
     root.deiconify()
     root.attributes("-topmost", True)
@@ -115,6 +137,7 @@ hotkeys = keyboard.GlobalHotKeys({
     "<ctrl>+<alt>+q": lambda: root.after(0, quit_app),
 })
 hotkeys.start()
+
 
 def create_tray_image():
     # Simple placeholder icon drawn in code (we can use a real logo later)

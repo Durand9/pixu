@@ -22,7 +22,7 @@ Press a hotkey from anywhere, ask a question, get an answer.
 - [x] Terminal chat
 - [x] Chat window
 - [x] Global hotkey
-- [ ] Streaming answers
+- [x] Streaming answers
 - [x] System tray icon
 - [ ] Screenshot understanding
 - [ ] Voice input
