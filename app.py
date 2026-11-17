@@ -1,16 +1,23 @@
 import os
 import threading
+import time
 import tkinter as tk
 from tkinter import scrolledtext
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-MODEL = "gemini-3.6-flash"  # keep the model name you already use
-chat = client.chats.create(model=MODEL)
+MODEL = "gemini-3.8-flash"  # keep the model name you already use
+chat = client.chats.create(
+    model=MODEL,
+    config=types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_level="medium")
+    ),
+)
 
 
 def add_message(sender, text):
@@ -22,10 +29,17 @@ def add_message(sender, text):
 
 def ask_ai(question):
     # Runs in a background thread so the window never freezes
-    try:
-        answer = chat.send_message(question).text
-    except Exception as error:
-        answer = f"Error: {error}"
+    answer = None
+    for attempt in range(3):
+        try:
+            answer = chat.send_message(question).text
+            break
+        except Exception as error:
+            if "503" in str(error) and attempt < 2:
+                time.sleep(2 * (attempt + 1))  # wait 2s, then 4s then retry
+                continue
+            answer = f"Error: {error}"
+            break
     root.after(0, lambda: show_answer(answer))
 
 
